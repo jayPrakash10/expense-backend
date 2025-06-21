@@ -9,8 +9,8 @@ const userSettingsSchema = new mongoose.Schema({
   },
   currency: {
     type: String,
-    enum: ['rupees', 'dollars', 'euros', 'pounds'],
-    default: 'rupees'
+    enum: ['INR', 'USD', 'EUR', 'GBP'],
+    default: 'INR'
   },
   language: {
     type: String,

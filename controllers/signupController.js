@@ -1,7 +1,8 @@
-const User = require('../models/User');
-const OTP = require('../models/OTP');
-const jwt = require('jsonwebtoken');
-const emailService = require('../services/emailService');
+const User = require("../models/User");
+const OTP = require("../models/OTP");
+const jwt = require("jsonwebtoken");
+const UserSettings = require("../models/UserSettings");
+const emailService = require("../services/emailService");
 
 // Step 1: Generate OTP for signup
 exports.generateSignupOTP = async (req, res) => {
@@ -11,7 +12,7 @@ exports.generateSignupOTP = async (req, res) => {
     if (!email) {
       return res.status(400).json({
         success: false,
-        message: 'Email is required'
+        message: "Email is required",
       });
     }
 
@@ -20,7 +21,7 @@ exports.generateSignupOTP = async (req, res) => {
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: 'User already exists'
+        message: "User already exists",
       });
     }
 
@@ -32,12 +33,12 @@ exports.generateSignupOTP = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'OTP sent successfully for signup verification'
+      message: "OTP sent successfully for signup verification",
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -50,7 +51,7 @@ exports.verifyOTPAndCreateUser = async (req, res) => {
     if (!email || !otp || !name) {
       return res.status(400).json({
         success: false,
-        message: 'Email, OTP, and name are required'
+        message: "Email, OTP, and name are required",
       });
     }
 
@@ -59,7 +60,7 @@ exports.verifyOTPAndCreateUser = async (req, res) => {
     if (!validOTP) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid or expired OTP'
+        message: "Invalid or expired OTP",
       });
     }
 
@@ -68,36 +69,35 @@ exports.verifyOTPAndCreateUser = async (req, res) => {
       name,
       email,
       phone: phone || null, // Phone is optional
-      profile_img: profile_img || ''
+      profile_img: profile_img || "",
     });
 
     await user.save();
 
+    // Create default user settings
+    const settings = new UserSettings({
+      user_id: user._id,
+    });
+    await settings.save();
+
     // Generate JWT token
     const token = jwt.sign(
       { userId: user._id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
+      process.env.JWT_SECRET
     );
 
     res.status(201).json({
       success: true,
-      message: 'User created successfully',
+      message: "User created successfully",
       data: {
         token,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          profile_img: user.profile_img
-        }
-      }
+        user: user,
+      },
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };

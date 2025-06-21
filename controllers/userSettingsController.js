@@ -30,7 +30,7 @@ exports.updateUserSettings = async (req, res) => {
     const { currency, language } = req.body;
 
     // Validate inputs
-    if (currency && !['rupees', 'dollars', 'euros', 'pounds'].includes(currency)) {
+    if (currency && !['INR', 'USD', 'EUR', 'GBP'].includes(currency)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid currency'

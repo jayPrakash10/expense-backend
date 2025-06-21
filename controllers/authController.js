@@ -81,8 +81,7 @@ exports.verifyOTP = async (req, res) => {
     // Generate JWT token
     const token = jwt.sign(
       { userId: user._id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
+      process.env.JWT_SECRET
     );
 
     res.status(200).json({
@@ -90,13 +89,7 @@ exports.verifyOTP = async (req, res) => {
       message: 'Authentication successful',
       data: {
         token,
-        user: {
-          id: user._id,
-          name: user.name,
-          phone: user.phone,
-          email: user.email,
-          profile_img: user.profile_img
-        }
+        user: user
       }
     });
   } catch (error) {

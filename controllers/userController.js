@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const UserSettings = require('../models/UserSettings');
 
 // Create a new user
 exports.createUser = async (req, res) => {
@@ -40,6 +41,35 @@ exports.getAllUsers = async (req, res) => {
   }
 };
 
+// Get profile
+exports.getProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user_id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Get user settings
+    const settings = await UserSettings.findOne({ user_id: req.user_id });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        user,
+        settings
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
 // Get a single user by ID
 exports.getUserById = async (req, res) => {
   try {
@@ -66,7 +96,7 @@ exports.getUserById = async (req, res) => {
 exports.updateUser = async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(
-      req.params.id,
+      req.user_id,
       req.body,
       { new: true, runValidators: true }
     );
