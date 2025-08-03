@@ -321,16 +321,16 @@ exports.getExpensesByMonth = async (req, res) => {
 
     // Get start and end dates for the month
     const startDate = new Date(yearNum, monthNum - 1, 1);
-    const endDate = new Date(yearNum, monthNum, 0);
+    const endDate = new Date(yearNum, monthNum, 0, 23, 59, 59, 999);
     console.log("========================================");
-    console.log(startDate, endDate);
+    console.log(startDate.toString(), endDate.toString());
 
     // Build query
     const query = {
       user_id: req.user_id,
       date: {
         $gte: startDate,
-        $lte: endDate,
+        $lt: endDate,
       },
     };
 
@@ -366,8 +366,8 @@ exports.getExpensesByMonth = async (req, res) => {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, "0"); // Months are 0-indexed
       const day = String(date.getDate()).padStart(2, "0");
-      console.log("========================================");
-      console.log(year, month, day);
+      console.log("***********************************");
+      console.log(date.toString(), date.getTimezoneOffset());
 
       const dateStr = `${year}-${month}-${day}`;
       if (!analytics.daily[dateStr]) {
