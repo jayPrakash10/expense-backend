@@ -16,7 +16,26 @@ const userSettingsSchema = new mongoose.Schema({
     type: String,
     enum: ['english', 'hindi', 'spanish', 'french', 'german'],
     default: 'english'
-  }
+  },
+  currentIncome: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  quickAdd: [{
+    _id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Subcategory'
+    },
+    name: {
+      type: String,
+      required: true
+    },
+    color: {
+      type: String,
+      required: true
+    }
+  }],
 }, {
   timestamps: true
 });

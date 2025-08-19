@@ -1,6 +1,9 @@
 const Expense = require("../models/Expense");
 const User = require("../models/User");
 const Subcategory = require("../models/Subcategory");
+const UserSettings = require("../models/UserSettings");
+const MonthlyIncome = require("../models/MonthlyIncome");
+const { processExpenseCurrency, convertCurrency } = require("../utils/currencyUtils");
 
 // Create a new expense
 exports.createExpense = async (req, res) => {
@@ -33,25 +36,35 @@ exports.createExpense = async (req, res) => {
       });
     }
 
+    // Get user's currency setting
+    const settings = await UserSettings.getOrCreateSettings(req.user_id);
+    const currency = settings.currency;
+
     // Create new expense
     const expense = new Expense({
       user_id: req.user_id,
       subcategory_id,
       amount,
-      date,
+      date: date || Date.getTime(), // Use provided timestamp or current timestamp
       mode_of_payment,
       notes,
+      currency,
     });
 
     await expense.save();
 
-    // Get populated expense
-    const populatedExpense = await expense.getPopulatedExpense();
+    // Get user's preferred currency for response
+    const userSettings = await UserSettings.getOrCreateSettings(req.user_id);
+    const processedExpense = await processExpenseCurrency(
+      expense,
+      userSettings.currency
+    );
 
+    // Send response
     res.status(201).json({
       success: true,
       message: "Expense created successfully",
-      data: populatedExpense,
+      data: processedExpense,
     });
   } catch (error) {
     res.status(500).json({
@@ -92,10 +105,10 @@ exports.getUserExpenses = async (req, res) => {
     if (category_id) query.category_id = category_id;
     if (subcategory_id) query.subcategory_id = subcategory_id;
     if (mode_of_payment) query.mode_of_payment = mode_of_payment;
-    if (startDate) query.date = { $gte: new Date(startDate) };
+    if (startDate) query.date = { $gte: new Date(startDate).getTime() };
     if (endDate) {
       if (!query.date) query.date = {};
-      query.date.$lte = new Date(endDate);
+      query.date.$lte = new Date(endDate).getTime();
     }
 
     // Get total count
@@ -116,9 +129,16 @@ exports.getUserExpenses = async (req, res) => {
         select: "name",
       });
 
+    // Get user's preferred currency for response
+    const userSettings = await UserSettings.getOrCreateSettings(req.user_id);
+    const processedExpenses = await processExpenseCurrency(
+      expenses,
+      userSettings.currency
+    );
+
     res.status(200).json({
       success: true,
-      data: expenses,
+      data: processedExpenses,
       meta: {
         total,
         page: parseInt(page),
@@ -149,6 +169,7 @@ exports.getExpensesByYear = async (req, res) => {
 
     // Validate year
     const yearNum = parseInt(year);
+
     if (isNaN(yearNum) || yearNum < 2000) {
       return res.status(400).json({
         success: false,
@@ -158,14 +179,14 @@ exports.getExpensesByYear = async (req, res) => {
 
     // Get start and end dates for the year
     const startDate = new Date(yearNum, 0, 1); // January 1st
-    const endDate = new Date(yearNum, 11, 31); // December 31st
+    const endDate = new Date(yearNum, 11, 31, 23, 59, 59, 999); // December 31st
 
     // Build query
     const query = {
       user_id: req.user_id,
       date: {
-        $gte: startDate,
-        $lte: endDate,
+        $gte: startDate.getTime(),
+        $lte: endDate.getTime(),
       },
     };
 
@@ -182,11 +203,17 @@ exports.getExpensesByYear = async (req, res) => {
         select: "name",
       });
 
-    // Calculate total amount for the year
-    const totalAmount = expenses.reduce(
-      (sum, expense) => sum + expense.amount,
-      0
+    // Get user's preferred currency for response
+    const userSettings = await UserSettings.getOrCreateSettings(req.user_id);
+    const processedExpenses = await processExpenseCurrency(
+      expenses,
+      userSettings.currency
     );
+
+    // Calculate total amount for the year
+    const totalAmount = processedExpenses.reduce((sum, expense) => {
+      return parseFloat((sum + expense.amount).toFixed(2));
+    }, 0);
 
     // Generate analytics data
     const analytics = {
@@ -195,7 +222,7 @@ exports.getExpensesByYear = async (req, res) => {
     };
 
     // Process expenses for analytics
-    expenses.forEach((expense) => {
+    processedExpenses.forEach((expense) => {
       // Monthly analytics
       const month = new Date(expense.date).getMonth() + 1; // Months are 0-based in JS
       if (!analytics.monthly[month]) {
@@ -231,7 +258,7 @@ exports.getExpensesByYear = async (req, res) => {
 
     // Calculate most used payment mode by count
     const paymentModeCount = {};
-    expenses.forEach((expense) => {
+    processedExpenses.forEach((expense) => {
       if (!paymentModeCount[expense.mode_of_payment]) {
         paymentModeCount[expense.mode_of_payment] = 0;
       }
@@ -261,7 +288,7 @@ exports.getExpensesByYear = async (req, res) => {
     res.status(200).json({
       success: true,
       data: {
-        expenses,
+        expenses: processedExpenses,
         totalAmount,
         year: yearNum,
         startDate: startDate.toISOString().split("T")[0],
@@ -324,13 +351,14 @@ exports.getExpensesByMonth = async (req, res) => {
     const endDate = new Date(yearNum, monthNum, 0, 23, 59, 59, 999);
     console.log("========================================");
     console.log(startDate.toString(), endDate.toString());
+    console.log(startDate.getTime(), endDate.getTime());
 
     // Build query
     const query = {
       user_id: req.user_id,
       date: {
-        $gte: startDate,
-        $lt: endDate,
+        $gte: startDate.getTime(),
+        $lt: endDate.getTime(),
       },
     };
 
@@ -347,10 +375,11 @@ exports.getExpensesByMonth = async (req, res) => {
         select: "name",
       });
 
-    // Calculate total amount for the month
-    const totalAmount = expenses.reduce(
-      (sum, expense) => sum + expense.amount,
-      0
+    // Get user's preferred currency for response
+    const userSettings = await UserSettings.getOrCreateSettings(req.user_id);
+    const processedExpenses = await processExpenseCurrency(
+      expenses,
+      userSettings.currency
     );
 
     // Generate analytics data
@@ -360,14 +389,14 @@ exports.getExpensesByMonth = async (req, res) => {
     };
 
     // Process expenses for analytics
-    expenses.forEach((expense) => {
+    processedExpenses.forEach((expense) => {
       // Daily analytics
       const date = new Date(expense.date);
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, "0"); // Months are 0-indexed
       const day = String(date.getDate()).padStart(2, "0");
       console.log("***********************************");
-      console.log(date.toString(), date.getTimezoneOffset());
+      console.log(date.getTime(), startDate.getTime(), endDate.getTime());
 
       const dateStr = `${year}-${month}-${day}`;
       if (!analytics.daily[dateStr]) {
@@ -377,9 +406,13 @@ exports.getExpensesByMonth = async (req, res) => {
 
       // Payment mode analytics
       if (!analytics.paymentModes[expense.mode_of_payment]) {
-        analytics.paymentModes[expense.mode_of_payment] = 0;
+        analytics.paymentModes[expense.mode_of_payment] = {
+          amount: 0,
+          used: 0,
+        };
       }
-      analytics.paymentModes[expense.mode_of_payment] += expense.amount;
+      analytics.paymentModes[expense.mode_of_payment].amount += expense.amount;
+      analytics.paymentModes[expense.mode_of_payment].used++;
     });
 
     // Convert daily analytics to array
@@ -398,44 +431,18 @@ exports.getExpensesByMonth = async (req, res) => {
     modes.forEach((mode) => {
       paymentModeAnalytics.push({
         mode,
-        amount: analytics.paymentModes[mode],
+        amount: analytics.paymentModes[mode].amount,
+        used: analytics.paymentModes[mode].used,
       });
     });
 
-    // Calculate most used payment mode by count
-    const paymentModeCount = {};
-    expenses.forEach((expense) => {
-      if (!paymentModeCount[expense.mode_of_payment]) {
-        paymentModeCount[expense.mode_of_payment] = 0;
-      }
-      paymentModeCount[expense.mode_of_payment]++;
-    });
-
-    // Find most used payment mode by count
-    let mostUsedMode = null;
-    let maxCount = 0;
-    for (const [mode, count] of Object.entries(paymentModeCount)) {
-      if (count > maxCount) {
-        maxCount = count;
-        mostUsedMode = mode;
-      }
-    }
-
-    // Find payment mode with highest total amount
-    let highestAmountMode = null;
-    let maxAmount = 0;
-    for (const [mode, amount] of Object.entries(analytics.paymentModes)) {
-      if (amount > maxAmount) {
-        maxAmount = amount;
-        highestAmountMode = mode;
-      }
-    }
+    const overview = await getMonthOverview(req.user_id, startDate, endDate);
 
     res.status(200).json({
       success: true,
       data: {
-        expenses,
-        totalAmount,
+        expenses: processedExpenses,
+        totalAmount: overview.summary.totalExpenses,
         month: monthNum,
         year: yearNum,
         startDate: startDate.toISOString().split("T")[0],
@@ -443,14 +450,7 @@ exports.getExpensesByMonth = async (req, res) => {
         analytics: {
           daily: dailyAnalytics,
           paymentModes: paymentModeAnalytics,
-          mostUsedPaymentMode: {
-            mode: mostUsedMode,
-            count: maxCount,
-          },
-          highestAmountPaymentMode: {
-            mode: highestAmountMode,
-            amount: maxAmount,
-          },
+          ...overview,
         },
       },
     });
@@ -483,9 +483,16 @@ exports.getExpense = async (req, res) => {
       });
     }
 
+    // Get user's preferred currency for response
+    const userSettings = await UserSettings.getOrCreateSettings(req.user_id);
+    const processedExpense = await processExpenseCurrency(
+      expense,
+      userSettings.currency
+    );
+
     res.status(200).json({
       success: true,
-      data: expense,
+      data: processedExpense,
     });
   } catch (error) {
     res.status(500).json({
@@ -527,13 +534,18 @@ exports.updateExpense = async (req, res) => {
 
     await expense.save();
 
-    // Get populated expense
-    const populatedExpense = await expense.getPopulatedExpense();
+    // Get user's preferred currency for response
+    const userSettings = await UserSettings.getOrCreateSettings(req.user_id);
+    const processedExpense = await processExpenseCurrency(
+      expense,
+      userSettings.currency
+    );
 
+    // Send response
     res.status(200).json({
       success: true,
       message: "Expense updated successfully",
-      data: populatedExpense,
+      data: processedExpense,
     });
   } catch (error) {
     res.status(500).json({
@@ -590,6 +602,47 @@ exports.deleteMultipleExpenses = async (req, res) => {
   }
 };
 
+/**
+ * Get monthly overview of expenses
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+exports.getMonthlyOverview = async (req, res) => {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+      999
+    );
+
+    const overview = await getMonthOverview(
+      req.user_id,
+      startOfMonth,
+      endOfMonth
+    );
+
+    const response = {
+      success: true,
+      data: overview,
+    };
+
+    res.status(200).json(response);
+  } catch (error) {
+    console.error("Error in getMonthlyOverview:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch monthly overview",
+      error: error.message,
+    });
+  }
+};
+
 // Delete an expense
 exports.deleteExpense = async (req, res) => {
   try {
@@ -612,4 +665,100 @@ exports.deleteExpense = async (req, res) => {
       message: error.message,
     });
   }
+};
+
+const getMonthOverview = async (userId, startDate, endDate) => {
+  // Get user's preferred currency
+  const userSettings = await UserSettings.getOrCreateSettings(userId);
+  const userCurrency = userSettings.currency;
+
+  // Get all expenses for current month
+  const expenses = await Expense.find({
+    user_id: userId,
+    date: {
+      $gte: startDate.getTime(),
+      $lte: endDate.getTime(),
+    },
+  }).populate({
+    path: "subcategory_id",
+    populate: {
+      path: "category_id",
+      select: "name color",
+    },
+    select: "name color category_id",
+  });
+
+  // Process expenses to convert amounts to user's currency
+  const processedExpenses = processExpenseCurrency(expenses, userCurrency);
+
+  // Calculate total expenses
+  const totalExpenses = processedExpenses.reduce((sum, expense) => {
+    return sum + expense.amount;
+  }, 0);
+
+  // Get category breakdown
+  const categoryBreakdown = {};
+  processedExpenses.forEach((expense) => {
+    const categoryId =
+      expense.subcategory_id?._id?.toString() || "uncategorized";
+    const categoryName = expense.subcategory_id?.name || "Uncategorized";
+    const categoryColor = expense.subcategory_id?.color || "#cccccc";
+
+    if (!categoryBreakdown[categoryId]) {
+      categoryBreakdown[categoryId] = {
+        id: categoryId,
+        name: categoryName,
+        color: categoryColor,
+        amount: 0,
+        percentage: 0,
+      };
+    }
+    categoryBreakdown[categoryId].amount += expense.amount;
+  });
+
+  // Convert to array and calculate percentages
+  const categories = Object.values(categoryBreakdown).map((category) => ({
+    ...category,
+    percentage:
+      totalExpenses > 0
+        ? Math.round((category.amount / totalExpenses) * 100)
+        : 0,
+  }));
+
+  // Get daily spending
+  const dailySpending = {};
+  processedExpenses.forEach((expense) => {
+    const date = new Date(expense.date).toISOString().split("T")[0];
+    if (!dailySpending[date]) {
+      dailySpending[date] = 0;
+    }
+    dailySpending[date] += expense.amount;
+  });
+
+  // Get monthly income
+  let monthlyIncome = await MonthlyIncome.getOrCreateCurrentMonthIncome(
+    userId,
+    startDate.getFullYear(),
+    startDate.getMonth() + 1
+  );
+
+  return {
+    summary: {
+      totalExpenses: parseFloat(totalExpenses.toFixed(2)),
+      monthlyIncome: monthlyIncome
+        ? parseFloat(
+            convertCurrency(
+              monthlyIncome.income.toFixed(2),
+              monthlyIncome.currency,
+              userCurrency
+            )
+          )
+        : 0,
+      remainingBalance: monthlyIncome
+        ? parseFloat((monthlyIncome.income - totalExpenses).toFixed(2))
+        : undefined,
+      currency: userCurrency,
+    },
+    categories,
+  };
 };

@@ -12,6 +12,7 @@ app.use(express.json());
 // Database connection
 const MONGODB_URI = process.env.DB_URI || process.env.MONGODB_URI;
 
+mongoose.set("bufferTimeoutMS", 50000);
 mongoose.connect(MONGODB_URI, { dbName: 'expense' })
   .then(() => console.log('MongoDB Connected'))
   .catch(err => console.log('MongoDB Connection Error:', err));

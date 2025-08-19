@@ -27,7 +27,7 @@ exports.getUserSettings = async (req, res) => {
 // Update user settings
 exports.updateUserSettings = async (req, res) => {
   try {
-    const { currency, language } = req.body;
+    const { currency, language, quickAdd, currentIncome } = req.body;
 
     // Validate inputs
     if (currency && !['INR', 'USD', 'EUR', 'GBP'].includes(currency)) {
@@ -53,6 +53,8 @@ exports.updateUserSettings = async (req, res) => {
     // Update settings
     if (currency !== undefined) settings.currency = currency;
     if (language !== undefined) settings.language = language;
+    if (quickAdd !== undefined) settings.quickAdd = quickAdd;
+    if (currentIncome !== undefined) settings.currentIncome = currentIncome;
 
     await settings.save();
 

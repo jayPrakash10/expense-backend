@@ -17,9 +17,15 @@ const expenseSchema = new mongoose.Schema({
     min: 0
   },
   date: {
-    type: Date,
+    type: Number,
     required: true,
-    default: Date.now
+    default: Date.now(),
+    get: function(timestamp) {
+      return new Date(timestamp);
+    },
+    set: function(date) {
+      return date instanceof Date ? date.getTime() : date;
+    }
   },
   mode_of_payment: {
     type: String,
@@ -28,8 +34,13 @@ const expenseSchema = new mongoose.Schema({
   },
   notes: {
     type: String,
-    trim: true
-  }
+  },
+  currency: {
+    type: String,
+    required: true,
+    enum: ['INR', 'USD', 'EUR', 'GBP'],
+    default: 'INR'
+  },
 }, {
   timestamps: true
 });
